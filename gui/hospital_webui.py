@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
 import uvicorn
 
-from hospital_node import HospitalNode, CONFIG
+from hospital_node import HospitalNode
 from registry import list_hospitals
 
 
@@ -23,11 +23,19 @@ class ApproveBody(BaseModel):
     approved: bool
 
 
-def create_app(hospital_name: str, public_host: str | None = None) -> FastAPI:
-    if hospital_name not in CONFIG:
-        raise ValueError(f"Unknown hospital '{hospital_name}'")
-
-    node = HospitalNode(hospital_name, public_host=public_host)
+def create_app(
+    hospital_name: str,
+    p2p_host: str = "0.0.0.0",
+    p2p_port: int = 65001,
+    public_host: str | None = None,
+) -> FastAPI:
+    # HospitalNode now handles config dynamically (no global CONFIG)
+    node = HospitalNode(
+        hospital_name,
+        p2p_host=p2p_host,
+        p2p_port=p2p_port,
+        public_host=public_host,
+    )
     node.start_server()
     logger = node.logger
 
@@ -863,7 +871,9 @@ def create_app(hospital_name: str, public_host: str | None = None) -> FastAPI:
 
         Ordered with newest entries first.
         """
-        log_path = os.path.join("logs", f"{hospital_name}.log")
+        log_path = node.conf.get(
+            "log_file", os.path.join("logs", f"{hospital_name}.log")
+        )
         if not os.path.exists(log_path):
             return []
 
@@ -907,7 +917,9 @@ def create_app(hospital_name: str, public_host: str | None = None) -> FastAPI:
         """
         Download the raw log file for this hospital node.
         """
-        log_path = os.path.join("logs", f"{hospital_name}.log")
+        log_path = node.conf.get(
+            "log_file", os.path.join("logs", f"{hospital_name}.log")
+        )
         if not os.path.exists(log_path):
             raise HTTPException(status_code=404, detail="Log file not found.")
         return FileResponse(
@@ -1063,19 +1075,50 @@ def _normalize_log_message(msg: str) -> str:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("hospital", choices=list(CONFIG.keys()))
-    parser.add_argument("--host", default="127.0.0.1", help="Host for the web UI (FastAPI)")
-    parser.add_argument("--port", type=int, default=8000, help="Port for the web UI (FastAPI)")
+    parser.add_argument(
+        "hospital",
+        help="Hospital name whose node should run (must match the name stored in Mongo).",
+    )
+    parser.add_argument(
+        "--ui-host",
+        default="127.0.0.1",
+        help="Host/IP for the web UI (FastAPI).",
+    )
+    parser.add_argument(
+        "--ui-port",
+        type=int,
+        default=8000,
+        help="Port for the web UI (FastAPI).",
+    )
+    parser.add_argument(
+        "--p2p-host",
+        default="0.0.0.0",
+        help="Host/IP to bind the P2P socket server on.",
+    )
+    parser.add_argument(
+        "--p2p-port",
+        type=int,
+        default=65001,
+        help="Port for the P2P socket server.",
+    )
     parser.add_argument(
         "--public-host",
         dest="public_host",
         default=None,
-        help="IP/DNS that other hospitals should use to reach this node (stored in Mongo registry)",
+        help=(
+            "IP/DNS that other hospitals should use to reach this node "
+            "(stored in Mongo registry). If omitted, --p2p-host is used."
+        ),
     )
     args = parser.parse_args()
 
-    app = create_app(args.hospital, public_host=args.public_host)
-    uvicorn.run(app, host=args.host, port=args.port)
+    app = create_app(
+        args.hospital,
+        p2p_host=args.p2p_host,
+        p2p_port=args.p2p_port,
+        public_host=args.public_host,
+    )
+    uvicorn.run(app, host=args.ui_host, port=args.ui_port)
 
 
 if __name__ == "__main__":
