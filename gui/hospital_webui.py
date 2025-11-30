@@ -9,8 +9,8 @@ from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
 import uvicorn
 
-from hospital_node import HospitalNode
-from registry import list_hospitals
+from backend.hospital_node import HospitalNode
+from backend.registry import list_hospitals
 
 
 class RequestFileBody(BaseModel):
@@ -39,7 +39,7 @@ def create_app(
     node.start_server()
     logger = node.logger
 
-    app = FastAPI(title=f"{hospital_name} Secure P2P Node")
+    app = FastAPI(title=f"{hospital_name} Secure Node")
 
     @app.get("/", response_class=HTMLResponse)
     async def index():
@@ -409,9 +409,6 @@ def create_app(
     <!-- SECTION 1: Outgoing & Incoming (top row) -->
     <section class="section">
       <div class="section-header">
-        <div>
-          <div class="section-title">Session control</div>
-        </div>
       </div>
       <div class="cards-grid">
         <!-- Outgoing (Client) -->
@@ -420,7 +417,6 @@ def create_app(
             <div class="card-header-left">
               <h2>Outgoing file request</h2>
             </div>
-            <span class="pill-label">Client</span>
           </div>
 
           <div class="row">
@@ -452,13 +448,12 @@ def create_app(
             <div class="card-header-left">
               <h2>Incoming requests</h2>
             </div>
-            <span class="pill-label blue">Server</span>
           </div>
 
           <table id="pending-table">
             <thead>
               <tr>
-                <th>Request ID</th>
+                <th>Request from</th>
                 <th>From</th>
                 <th>File</th>
               </tr>
@@ -519,12 +514,12 @@ def create_app(
         <div class="card">
           <div class="card-header">
             <div class="card-header-left">
-              <h2>Activity & logs</h2>
+              <h2>Activity & Logs</h2>
             </div>
           </div>
 
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-            <span class="section-subtitle">Newest events shown first.</span>
+            <span class="section-subtitle">Logs for crypto operations and system events.</span>
             <div style="display:flex; gap:6px; flex-wrap:wrap;">
               <button class="btn btn-secondary" onclick="loadLogs()">
                 <span class="icon">📜</span>
@@ -587,28 +582,27 @@ def create_app(
         tbody.innerHTML = '';
 
         if (!data.length) {{
-          tbody.innerHTML = '<tr><td colspan="3" style="color:#9ca3af;">No pending requests.</td></tr>';
-          selectedId = null;
-          return;
-        }}
+  tbody.innerHTML = '<tr><td colspan="2" style="color:#9ca3af;">No pending requests.</td></tr>';
+  selectedId = null;
+  return;
+}}
 
-        for (const req of data) {{
-          const tr = document.createElement('tr');
-          tr.id = 'row-' + req.id;
-          tr.onclick = () => selectRow(req.id);
+for (const req of data) {{
+  const tr = document.createElement('tr');
+  // still keep the internal ID for selection / approve/deny
+  tr.id = 'row-' + req.id;
+  tr.onclick = () => selectRow(req.id);
 
-          const tdId = document.createElement('td');
-          tdId.textContent = req.id;
-          const tdFrom = document.createElement('td');
-          tdFrom.textContent = req.requester;
-          const tdFile = document.createElement('td');
-          tdFile.textContent = req.file;
+  const tdFrom = document.createElement('td');
+  tdFrom.textContent = req.requester; // hospital name
 
-          tr.appendChild(tdId);
-          tr.appendChild(tdFrom);
-          tr.appendChild(tdFile);
-          tbody.appendChild(tr);
-        }}
+  const tdFile = document.createElement('td');
+  tdFile.textContent = req.file;
+
+  tr.appendChild(tdFrom);
+  tr.appendChild(tdFile);
+  tbody.appendChild(tr);
+}}
 
         if (selectedId) {{
           const row = document.getElementById('row-' + selectedId);

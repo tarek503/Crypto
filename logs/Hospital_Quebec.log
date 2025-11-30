@@ -1,10 +1,10 @@
-2025-11-26 23:09:08 [INFO] [Hospital_Quebec] Initializing node with cryptographic material...
-2025-11-26 23:09:08 [INFO] [Hospital_Quebec] Loading SIGNING private key from 'Hospital_Quebec_sign_private.pem'...
-2025-11-26 23:09:08 [INFO] [Hospital_Quebec] SignPrivateKeyLoaded | source=Hospital_Quebec_sign_private.pem
-2025-11-26 23:09:08 [INFO] [Hospital_Quebec] Loading ENCRYPTION private key from 'Hospital_Quebec_enc_private.pem'...
-2025-11-26 23:09:08 [INFO] [Hospital_Quebec] EncPrivateKeyLoaded | source=Hospital_Quebec_enc_private.pem
-2025-11-26 23:09:08 [INFO] [Hospital_Quebec] SignPublicKeyDerived | length=451
-2025-11-26 23:09:08 [INFO] [Hospital_Quebec] EncPublicKeyDerived | length=451
-2025-11-26 23:09:08 [INFO] [Hospital_Quebec] Directories ready: data_dir='Hospital_Quebec_data', received_dir='Hospital_Quebec_received'
-2025-11-26 23:09:09 [INFO] [Hospital_Quebec] Registry updated for Hospital_Quebec: host=26.62.246.222, port=65002
-2025-11-26 23:09:09 [INFO] [Hospital_Quebec] Background server thread started.
+2025-11-29 21:58:30 [INFO] [Hospital_Quebec] Initializing node with cryptographic material...
+2025-11-29 21:58:30 [INFO] [Hospital_Quebec] Loading SIGNING private key from 'Hospital_Quebec_sign_private.pem'...
+2025-11-29 21:58:30 [INFO] [Hospital_Quebec] SignPrivateKeyLoaded | source=Hospital_Quebec_sign_private.pem
+2025-11-29 21:58:30 [INFO] [Hospital_Quebec] Loading ENCRYPTION private key from 'Hospital_Quebec_enc_private.pem'...
+2025-11-29 21:58:30 [INFO] [Hospital_Quebec] EncPrivateKeyLoaded | source=Hospital_Quebec_enc_private.pem
+2025-11-29 21:58:30 [INFO] [Hospital_Quebec] SignPublicKeyDerived | length=451
+2025-11-29 21:58:30 [INFO] [Hospital_Quebec] EncPublicKeyDerived | length=451
+2025-11-29 21:58:30 [INFO] [Hospital_Quebec] Directories ready: data_dir='Hospital_Quebec_data', received_dir='Hospital_Quebec_received'
+2025-11-29 21:58:31 [INFO] [Hospital_Quebec] Registry updated for Hospital_Quebec: host=26.62.246.222, port=65002
+2025-11-29 21:58:31 [INFO] [Hospital_Quebec] Background server thread started.

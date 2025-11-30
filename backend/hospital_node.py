@@ -12,8 +12,8 @@ import logging
 
 from cryptography.hazmat.primitives import serialization
 
-from registry import register_hospital, get_hospital
-import crypto_utils
+from backend.registry import register_hospital, get_hospital
+from util import crypto_utils  
 
 # ===== Logging helpers =====
 
