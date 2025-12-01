@@ -8,6 +8,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
 import uvicorn
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
 
 from backend.hospital_node import HospitalNode
 from backend.registry import list_hospitals
@@ -40,6 +42,12 @@ def create_app(
     logger = node.logger
 
     app = FastAPI(title=f"{hospital_name} Secure Node")
+
+    # Log that the web UI has been created and where logs are going
+    logger.info(
+        f"Web UI created for hospital={hospital_name}, "
+        f"log_file={node.conf.get('log_file')}"
+    )
 
     @app.get("/", response_class=HTMLResponse)
     async def index():
@@ -454,7 +462,6 @@ def create_app(
             <thead>
               <tr>
                 <th>Request from</th>
-                <th>From</th>
                 <th>File</th>
               </tr>
             </thead>
@@ -582,27 +589,26 @@ def create_app(
         tbody.innerHTML = '';
 
         if (!data.length) {{
-  tbody.innerHTML = '<tr><td colspan="2" style="color:#9ca3af;">No pending requests.</td></tr>';
-  selectedId = null;
-  return;
-}}
+          tbody.innerHTML = '<tr><td colspan="2" style="color:#9ca3af;">No pending requests.</td></tr>';
+          selectedId = null;
+          return;
+        }}
 
-for (const req of data) {{
-  const tr = document.createElement('tr');
-  // still keep the internal ID for selection / approve/deny
-  tr.id = 'row-' + req.id;
-  tr.onclick = () => selectRow(req.id);
+        for (const req of data) {{
+          const tr = document.createElement('tr');
+          tr.id = 'row-' + req.id;
+          tr.onclick = () => selectRow(req.id);
 
-  const tdFrom = document.createElement('td');
-  tdFrom.textContent = req.requester; // hospital name
+          const tdFrom = document.createElement('td');
+          tdFrom.textContent = req.requester;
 
-  const tdFile = document.createElement('td');
-  tdFile.textContent = req.file;
+          const tdFile = document.createElement('td');
+          tdFile.textContent = req.file;
 
-  tr.appendChild(tdFrom);
-  tr.appendChild(tdFile);
-  tbody.appendChild(tr);
-}}
+          tr.appendChild(tdFrom);
+          tr.appendChild(tdFile);
+          tbody.appendChild(tr);
+        }}
 
         if (selectedId) {{
           const row = document.getElementById('row-' + selectedId);
@@ -775,6 +781,7 @@ for (const req of data) {{
 
     // Bootstrap
     setInterval(loadPending, 800);
+    setInterval(loadLogs, 2000);  // refresh Activity & Logs every 2 seconds
     loadPending();
     reloadFiles();
     loadLogs();
@@ -784,33 +791,45 @@ for (const req of data) {{
         """
 
     # ===== API: approvals =====
-
     @app.get("/api/pending")
     async def api_pending():
+        logger.debug("API /api/pending called – fetching approval queue.")
         return node.get_pending_approvals()
 
     @app.post("/api/approve")
     async def api_approve(body: ApproveBody):
+        logger.info(
+            f"API /api/approve called – id={body.id}, approved={body.approved}"
+        )
         node.resolve_approval(body.id, body.approved)
+        logger.info(f"API /api/approve finished for id={body.id}")
         return {"detail": f"Decision recorded for {body.id}."}
 
     # ===== API: send request =====
 
     @app.post("/api/request")
     async def api_request(body: RequestFileBody):
-        # We rely on MongoDB registry + HospitalNode.request_record
+        logger.info(
+            f"API /api/request called – target={body.target}, file={body.file_name}"
+        )
         ok = node.request_record(body.target, body.file_name)
         if not ok:
+            logger.warning(
+                "API /api/request failed – see previous node logs for "
+                "crypto/connection details."
+            )
             raise HTTPException(
                 status_code=500,
                 detail="Request failed. Check node logs for detailed reason.",
             )
+        logger.info("API /api/request succeeded.")
         return {"detail": "Request succeeded. See logs for crypto details."}
 
     # ===== API: file repository =====
 
     @app.get("/api/files")
     async def api_files():
+        logger.debug("API /api/files called – listing repository.")
         files = []
 
         def add_files_from(dir_path: str, kind: str):
@@ -861,7 +880,7 @@ for (const req of data) {{
         Return last N log lines as:
           - ts: timestamp
           - level: log level
-          - summary: high-level event description
+          - summary: high-level activity description
 
         Ordered with newest entries first.
         """
@@ -972,20 +991,34 @@ def _parse_fields_from_message(msg: str) -> dict:
 
 def _normalize_log_message(msg: str) -> str:
     """
-    Turn detailed crypto log lines into short, high-level activity summaries.
-    Always prefer a concise description over raw details.
-    """
-    # Structured logs with "Op | key=value | ..." format
-    if " | " in msg:
-        op = msg.split(" | ", 1)[0].strip()
-        fields = _parse_fields_from_message(msg)
+    Turn detailed crypto/system log lines into short, high-level activity
+    summaries for the UI.
 
+    - Structured logs of the form "Op | key=value | ..." are mapped by Op.
+    - Plain text logs are matched by common phrases.
+    - Fallback: show the original message (trimmed).
+    """
+    raw = msg.strip()
+    if not raw:
+        return "(no message)"
+
+    # ---------- 1) Structured logs: "Op | key=value | key2=value2" ----------
+    if " | " in raw:
+        # e.g. "[CRYPTO] AES_Encrypt_Done | iv_hex=..."  →  op = "AES_Encrypt_Done"
+        op_segment = raw.split(" | ", 1)[0].strip()
+        if op_segment.startswith("[CRYPTO]"):
+            op_segment = op_segment[len("[CRYPTO]"):].strip()
+        op = op_segment
+        fields = _parse_fields_from_message(raw)
+
+
+        # Incoming request: high-level "who wants what?"
         if op == "Request_Received":
             src = fields.get("from_hospital") or fields.get("from")
             mprev = fields.get("message_preview", "")
             filename = None
             if "Request:" in mprev:
-                filename = mprev.split("Request:", 1)[-1]
+                filename = mprev.split("Request:", 1)[-1].strip()
             parts = ["Incoming file request"]
             if src:
                 parts.append(f"from {src}")
@@ -993,79 +1026,159 @@ def _normalize_log_message(msg: str) -> str:
                 parts.append(f"for '{filename}'")
             return " ".join(parts)
 
+        # Key material loading / derivation
+        if op == "SignPrivateKeyLoaded":
+            return "Signing private key loaded from disk (node identity ready)."
+        if op == "EncPrivateKeyLoaded":
+            return "Encryption private key loaded from disk (confidentiality key ready)."
+        if op == "SignPublicKeyDerived":
+            return "Signing public key derived and ready to publish in registry."
+        if op == "EncPublicKeyDerived":
+            return "Encryption public key derived and ready to publish in registry."
+
+        # --- Outgoing request signing ---
+        if op == "SignMessage_Start":
+            return "Outgoing request: preparing message to sign with node's RSA private key."
+        if op == "SignMessage_Done":
+            return "Outgoing request: message signed (RSA/SHA-256) to authenticate sender."
+
+        # --- Incoming request verification ---
+        if op == "VerifySignature_Start":
+            return "Incoming request: verifying requester signature with stored RSA public key."
         if op == "VerifySignature_Success":
-            return "Requester signature verified."
-
+            return "Incoming request: requester signature verified (peer authenticated)."
         if op == "VerifySignature_Failed":
-            return "Signature verification failed."
+            return "Incoming request: signature verification failed – request rejected."
 
-        if op == "SessionKeys_Generated":
-            return "Session keys generated for this transfer."
+        # --- Session keys (AES + HMAC) ---
+        if op in ("SessionKeys_Generated", "SessionKeys_Derived"):
+            return "Ephemeral AES + HMAC session keys prepared for this file transfer."
 
+        # --- Protecting session keys with RSA ---
+        if op == "RSA_EncryptKeys_Start":
+            return "Encrypting AES/HMAC session keys with peer's RSA public key (for sending)."
         if op == "RSA_EncryptKeys_Done":
-            return "Session keys encrypted with recipient's RSA key."
+            return "AES/HMAC session keys encrypted with recipient's RSA public key."
+        if op == "RSA_DecryptKeys_Start":
+            return "Decrypting AES/HMAC session keys with local RSA private key (on receive)."
+        if op == "RSA_DecryptKeys_Done":
+            return "AES/HMAC session keys recovered with local RSA private key."
 
-        if op in ("RSA_DecryptKeys_Start", "RSA_DecryptKeys_Done"):
-            return "Session keys decrypted with local RSA key."
-
+        # --- AES data encryption/decryption ---
         if op == "AES_Encrypt_Done":
-            return "Record encrypted with AES-256."
-
+            return "Record encrypted with AES-256-CBC using fresh session key."
         if op == "AES_Decrypt_Done":
-            return "Record decrypted with AES-256."
+            return "Encrypted record decrypted with AES-256-CBC after integrity checks."
 
+        # --- HMAC integrity protection ---
         if op == "HMAC_Generate_Done":
-            return "HMAC-SHA256 tag generated."
-
+            return "Integrity tag (HMAC-SHA256) generated over ciphertext to detect tampering."
+        if op == "HMAC_Verify_Start":
+            return "Verifying HMAC-SHA256 tag to ensure ciphertext has not been modified."
         if op == "HMAC_Verify_Success":
-            return "HMAC check succeeded (data intact)."
-
+            return "HMAC integrity check succeeded – ciphertext is intact."
         if op == "HMAC_Verify_Failed":
-            return "HMAC check failed (data may be corrupted)."
+            return "HMAC integrity check failed – ciphertext may be corrupted or tampered."
 
+        # --- Encrypted package arrival ---
+        if op == "EncryptedPackage_Received":
+            return "Encrypted record package received from remote hospital – will verify and decrypt."
+
+        # --- File I/O on sender side ---
         if op == "File_Read":
             fname = fields.get("file")
             if fname:
-                return f"File '{fname}' prepared for transfer."
-            return "File prepared for transfer."
+                return f"Local record '{fname}' read from disk and prepared for encryption."
+            return "Local record read from disk and prepared for encryption."
 
-        # Default: generic op description
+        # Default for structured logs: prettify the op name
         short = op.replace("_", " ")
         if len(short) > 120:
             short = short[:117] + "..."
         return short
 
-    # Non-structured logs: map common phrases to high-level descriptions
-    text = msg
-    lowered = text.lower()
+    # ---------- 2) Plain-text logs (no "Op | ...") ----------
+    lowered = raw.lower()
 
-    if "starting node" in lowered:
-        return "Node started."
+    # Startup / cryptographic init
+    if "initializing node with cryptographic material" in lowered:
+        return "Node initializing cryptographic material."
+    if "loading signing private key" in lowered:
+        return "Loading signing private key from disk."
+    if "loading encryption private key" in lowered:
+        return "Loading encryption private key from disk."
+    if "directories ready" in lowered:
+        return "Data and received directories are ready."
+    if "registry updated for" in lowered:
+        return "Node registered/updated in central registry."
 
+    # Background server
+    if "background server worker started" in lowered:
+        return "Background server worker started."
     if "server listening on" in lowered:
-        return "Server is listening for incoming connections."
-
+        return "Server listening for incoming connections."
     if "accepted connection from" in lowered:
-        return "Incoming connection accepted."
-
-    if "request approved" in lowered:
-        return "Request approved by staff."
-
-    if "request denied" in lowered:
-        return "Request denied by staff."
-
-    if "secure package for" in lowered and "sent to" in lowered:
-        return "Encrypted package sent to requesting hospital."
-
-    if "saved record to" in lowered:
-        return "Decrypted record saved to storage."
-
+        return "Incoming TCP connection accepted."
     if "connection from" in lowered and "closed" in lowered:
         return "Connection closed."
 
-    # Fallback: very generic summary, no details
-    return "System event."
+    # Approval workflow
+    if "valid request for" in lowered and "from" in lowered:
+        return "Incoming request validated (signature OK)."
+    if "approval pending" in lowered:
+        return "Waiting for staff approval for a file request."
+    if "request" in lowered and "approved" in lowered:
+        return "Request approved by staff."
+    if "request" in lowered and "denied" in lowered:
+        return "Request denied by staff."
 
+    # Client-side request flow (UI + network)
+    if "api /api/request called" in lowered:
+        return "UI: outgoing secure file request initiated."
+    if "api /api/request succeeded" in lowered:
+        return "UI: outgoing secure file request completed."
+    if "api /api/request failed" in lowered:
+        return "UI: outgoing secure file request failed – see details in logs."
+
+    if "connecting to" in lowered and " at " in lowered:
+        return "Connecting to remote hospital node."
+    if "sending secure request for" in lowered:
+        return "Outgoing secure file request sent."
+    if "encrypted package received" in lowered:
+        return "Encrypted file package received from peer."
+    if "decrypted record saved to" in lowered:
+        return "Decrypted record stored in received folder."
+
+    # API: staff approvals
+    if "api /api/approve called" in lowered:
+        return "UI: staff decision submitted for an incoming request."
+    if "api /api/approve finished" in lowered:
+        return "UI: staff decision applied for the request."
+
+    # Registry / auth problems
+    if "failed to register hospital in registry" in lowered:
+        return "Failed to register this node in the central registry."
+    if "failed to query registry for requester" in lowered:
+        return "Error while querying registry for peer information."
+    if "unknown target hospital" in lowered:
+        return "Target hospital is not registered in the registry."
+    if "unknown requester" in lowered:
+        return "Incoming request from unregistered hospital."
+    if "authentication failed" in lowered or "invalid signature" in lowered:
+        return "Peer authentication failed."
+
+    # Connectivity issues
+    if "connection refused" in lowered:
+        return "Connection refused by remote hospital node."
+    if "timed out" in lowered:
+        return "Connection to remote hospital node timed out."
+    if "invalid ip/hostname" in lowered:
+        return "Invalid remote host configured."
+
+    # ---------- 3) Fallback: show raw message (trimmed) ----------
+    if len(raw) > 140:
+        return raw[:137] + "..."
+    return raw
 
 def main():
     parser = argparse.ArgumentParser()

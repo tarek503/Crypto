@@ -1,0 +1,49 @@
+2025-11-30 21:58:27 [INFO] [Hospital_B] Initializing node with cryptographic material...
+2025-11-30 21:58:27 [INFO] [Hospital_B] Loading SIGNING private key from 'Hospital_B_sign_private.pem'...
+2025-11-30 21:58:28 [INFO] [Hospital_B] [CRYPTO] SignPrivateKeyLoaded | source=Hospital_B_sign_private.pem
+2025-11-30 21:58:28 [INFO] [Hospital_B] Loading ENCRYPTION private key from 'Hospital_B_enc_private.pem'...
+2025-11-30 21:58:28 [INFO] [Hospital_B] [CRYPTO] EncPrivateKeyLoaded | source=Hospital_B_enc_private.pem
+2025-11-30 21:58:28 [INFO] [Hospital_B] [CRYPTO] SignPublicKeyDerived | length=451
+2025-11-30 21:58:28 [INFO] [Hospital_B] [CRYPTO] EncPublicKeyDerived | length=451
+2025-11-30 21:58:28 [INFO] [Hospital_B] Directories ready: data_dir='Hospital_B_data', received_dir='Hospital_B_received'
+2025-11-30 21:58:28 [INFO] [Hospital_B] Registry updated for Hospital_B: host=127.0.0.1, port=65001
+2025-11-30 21:58:28 [INFO] [Hospital_B] Background server worker started.
+2025-11-30 21:58:28 [INFO] [Hospital_B] Web UI created for hospital=Hospital_B, log_file=D:\Users\Tarek\Desktop\crypto project\kassouma\Crypto\logs\Hospital_B.log
+2025-11-30 21:58:28 [INFO] [Hospital_B] Server listening on 0.0.0.0:65001
+2025-11-30 21:58:46 [INFO] [Hospital_B] Accepted connection from ('127.0.0.1', 13573)
+2025-11-30 21:58:46 [INFO] [Hospital_B] [CRYPTO] Request_Received | from_hospital=Hospital_A | message_preview=Request:patient_123.txt | signature_len=256 | signature_preview=8ca13cccd3c58a6a791fd40f3c6949da...
+2025-11-30 21:58:46 [INFO] [Hospital_B] [CRYPTO] VerifySignature_Start | algo=RSA | hash=SHA-256
+2025-11-30 21:58:46 [INFO] [Hospital_B] [CRYPTO] VerifySignature_Success | note=Requester authenticated
+2025-11-30 21:58:46 [INFO] [Hospital_B] Valid request for 'patient_123.txt' from Hospital_A
+2025-11-30 21:58:46 [INFO] [Hospital_B] Approval pending: id=e2a55a3b-df59-4e84-a852-8b6a61ce81c9, from=Hospital_A, file=patient_123.txt
+2025-11-30 21:58:46 [INFO] [Hospital_B] Pending approvals count=1
+2025-11-30 21:58:47 [INFO] [Hospital_B] Pending approvals count=1
+2025-11-30 21:58:48 [INFO] [Hospital_B] Pending approvals count=1
+2025-11-30 21:58:49 [INFO] [Hospital_B] Pending approvals count=1
+2025-11-30 21:58:50 [INFO] [Hospital_B] Pending approvals count=1
+2025-11-30 21:58:50 [INFO] [Hospital_B] Pending approvals count=1
+2025-11-30 21:58:51 [INFO] [Hospital_B] API /api/approve called – id=e2a55a3b-df59-4e84-a852-8b6a61ce81c9, approved=True
+2025-11-30 21:58:51 [INFO] [Hospital_B] Staff APPROVED request_id=e2a55a3b-df59-4e84-a852-8b6a61ce81c9 from=Hospital_A file=patient_123.txt
+2025-11-30 21:58:51 [INFO] [Hospital_B] API /api/approve finished for id=e2a55a3b-df59-4e84-a852-8b6a61ce81c9
+2025-11-30 21:58:51 [INFO] [Hospital_B] Request e2a55a3b-df59-4e84-a852-8b6a61ce81c9 approved. Encrypting and sending...
+2025-11-30 21:58:51 [INFO] [Hospital_B] [CRYPTO] File_Read | file=patient_123.txt | preview=50415449454e54205245434f52443a20... | size=103
+2025-11-30 21:58:51 [INFO] [Hospital_B] [CRYPTO] SessionKeys_Generated | aes_key_len=32 | aes_key_preview=f1f7b3d0a7e836f1... | hmac_key_len=32 | hmac_key_preview=ce164013f036268c...
+2025-11-30 21:58:51 [INFO] [Hospital_B] [CRYPTO] AES_Encrypt_Done | ciphertext_len=112 | ciphertext_preview=0636b50da2843784ed9ac5553733021d... | iv_hex=14667eef844be79dac96310d9c2c6e43 | plaintext_len=103
+2025-11-30 21:58:51 [INFO] [Hospital_B] [CRYPTO] HMAC_Generate_Done | tag_len=32 | tag_preview=b50ad3fcce27fc00e83f43f9e4dbce15...
+2025-11-30 21:58:51 [INFO] [Hospital_B] [CRYPTO] RSA_EncryptKeys_Start | combined_len=64 | combined_preview=f1f7b3d0a7e836f1fcdd2c95b55fae2a...
+2025-11-30 21:58:51 [INFO] [Hospital_B] [CRYPTO] RSA_EncryptKeys_Done | enc_keys_len=256 | enc_keys_preview=cfa7a314f4763c033ac6c2637d2c294a...
+2025-11-30 21:58:51 [INFO] [Hospital_B] Secure package for 'patient_123.txt' sent to Hospital_A.
+2025-11-30 21:58:51 [INFO] [Hospital_B] Connection from Hospital_A closed.
+2025-11-30 21:58:53 [INFO] [Hospital_B] Accepted connection from ('127.0.0.1', 23945)
+2025-11-30 21:58:53 [INFO] [Hospital_B] [CRYPTO] Request_Received | from_hospital=Hospital_A | message_preview=Request:patient_123.txt | signature_len=256 | signature_preview=56c1cd63e3377fc13774bd9e9600f5e6...
+2025-11-30 21:58:53 [INFO] [Hospital_B] [CRYPTO] VerifySignature_Start | algo=RSA | hash=SHA-256
+2025-11-30 21:58:53 [INFO] [Hospital_B] [CRYPTO] VerifySignature_Success | note=Requester authenticated
+2025-11-30 21:58:53 [INFO] [Hospital_B] Valid request for 'patient_123.txt' from Hospital_A
+2025-11-30 21:58:53 [INFO] [Hospital_B] Approval pending: id=ffb31466-aacc-4fde-bbdf-32c735389ee4, from=Hospital_A, file=patient_123.txt
+2025-11-30 21:58:54 [INFO] [Hospital_B] Pending approvals count=1
+2025-11-30 21:58:54 [INFO] [Hospital_B] Pending approvals count=1
+2025-11-30 21:58:55 [INFO] [Hospital_B] API /api/approve called – id=ffb31466-aacc-4fde-bbdf-32c735389ee4, approved=False
+2025-11-30 21:58:55 [INFO] [Hospital_B] Staff DENIED request_id=ffb31466-aacc-4fde-bbdf-32c735389ee4 from=Hospital_A file=patient_123.txt
+2025-11-30 21:58:55 [INFO] [Hospital_B] API /api/approve finished for id=ffb31466-aacc-4fde-bbdf-32c735389ee4
+2025-11-30 21:58:55 [INFO] [Hospital_B] Request ffb31466-aacc-4fde-bbdf-32c735389ee4 denied.
+2025-11-30 21:58:55 [INFO] [Hospital_B] Connection from Hospital_A closed.

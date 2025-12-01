@@ -13,49 +13,70 @@ import logging
 from cryptography.hazmat.primitives import serialization
 
 from backend.registry import register_hospital, get_hospital
-from util import crypto_utils  
+from util import crypto_utils
+
 
 # ===== Logging helpers =====
+
 
 def get_logger(node_name: str, log_path: str) -> logging.Logger:
     """
     Logger that logs to stdout + per-hospital file.
-    Log file is FRESH each run (previous content truncated).
+
+    - One stdout handler (console)
+    - One file handler per log_path
+    - Log level = INFO (crypto + key events; no debug spam)
     """
     logger = logging.getLogger(node_name)
-    if logger.handlers:
-        return logger
 
-    logger.setLevel(logging.DEBUG)
+    # Always normalize to absolute path so UI + backend agree
+    log_path = os.path.abspath(log_path)
+
+    has_file_for_this_path = False
+    has_stdout_handler = False
+
+    for h in logger.handlers:
+        if isinstance(h, logging.FileHandler):
+            existing = os.path.abspath(getattr(h, "baseFilename", ""))
+            if existing == log_path:
+                has_file_for_this_path = True
+        if isinstance(h, logging.StreamHandler) and getattr(h, "stream", None) is sys.stdout:
+            has_stdout_handler = True
+
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
 
-    # Fresh logs every run
-    try:
-        if os.path.exists(log_path):
-            os.remove(log_path)
-    except OSError:
-        pass
+    # First time we configure this logger → start with a fresh file
+    if not has_file_for_this_path and not logger.handlers:
+        try:
+            if os.path.exists(log_path):
+                os.remove(log_path)
+        except OSError:
+            pass
 
-    # Console
-    ch = logging.StreamHandler(sys.stdout)
-    ch.setLevel(logging.DEBUG)
-    ch.setFormatter(logging.Formatter(f"[{node_name}] %(message)s"))
-
-    # File
-    fh = logging.FileHandler(log_path, mode="w", encoding="utf-8")
-    fh.setLevel(logging.DEBUG)
-    fh.setFormatter(
-        logging.Formatter(
-            "%(asctime)s [%(levelname)s] " + f"[{node_name}] %(message)s",
-            "%Y-%m-%d %H:%M:%S",
-        )
-    )
-
-    logger.addHandler(ch)
-    logger.addHandler(fh)
+    logger.setLevel(logging.INFO)      # <— key change: no DEBUG by default
     logger.propagate = False
 
+    # stdout handler
+    if not has_stdout_handler:
+        ch = logging.StreamHandler(sys.stdout)
+        ch.setLevel(logging.INFO)
+        ch.setFormatter(logging.Formatter(f"[{node_name}] %(message)s"))
+        logger.addHandler(ch)
+
+    # file handler
+    if not has_file_for_this_path:
+        fh = logging.FileHandler(log_path, mode="a", encoding="utf-8")
+        fh.setLevel(logging.INFO)
+        fh.setFormatter(
+            logging.Formatter(
+                "%(asctime)s [%(levelname)s] " + f"[{node_name}] %(message)s",
+                "%Y-%m-%d %H:%M:%S",
+            )
+        )
+        logger.addHandler(fh)
+
     return logger
+
 
 
 def _short_hex(data: bytes, length: int = 16) -> str:
@@ -64,12 +85,24 @@ def _short_hex(data: bytes, length: int = 16) -> str:
     h = data.hex()
     return (h[: 2 * length] + ("..." if len(h) > 2 * length else "")) or "∅"
 
-
 def _log_crypto(logger: logging.Logger, op: str, **fields):
-    parts = [op]
-    for k, v in fields.items():
-        parts.append(f"{k}={v}")
-    logger.info(" | ".join(parts))
+    """
+    Structured crypto log helper.
+
+    - Prefixes each line with [CRYPTO] so it stands out in the raw log file.
+    - Keeps a machine-friendly "op | key=value | ..." format.
+    - Sorts keys alphabetically so repeated operations line up nicely.
+    """
+    # Sort fields so logs are stable & easy to scan
+    if fields:
+        ordered = sorted(fields.items(), key=lambda kv: kv[0])
+        kv_str = " | ".join(f"{k}={v}" for k, v in ordered)
+        message = f"[CRYPTO] {op} | {kv_str}"
+    else:
+        message = f"[CRYPTO] {op}"
+
+    logger.info(message)
+
 
 
 class ApprovalRequest:
@@ -94,7 +127,8 @@ class ApprovalRequest:
 
     def wait_for_decision(self) -> bool:
         self.logger.debug(
-            f"Waiting for decision: id={self.id}, requester={self.requester_name}, file={self.file_to_send}"
+            f"Waiting for decision: id={self.id}, requester={self.requester_name}, "
+            f"file={self.file_to_send}"
         )
         self._event.wait()
         return self._approved
@@ -133,7 +167,12 @@ class HospitalNode:
         received_dir: Folder where received records are stored (defaults to f"{my_name}_received")
         log_dir:      Directory for log files (default "logs")
         """
+        # IMPORTANT: set name first so we can use it in get_logger
         self.name = my_name
+
+        # Use an absolute path for the log file
+        log_file = os.path.abspath(os.path.join(log_dir, f"{my_name}.log"))
+
         self.conf = {
             "host": p2p_host,
             "port": int(p2p_port),
@@ -141,11 +180,12 @@ class HospitalNode:
             "enc_private_key": f"{my_name}_enc_private.pem",
             "data_dir": data_dir or f"{my_name}_data",
             "received_dir": received_dir or f"{my_name}_received",
-            "log_file": os.path.join(log_dir, f"{my_name}.log"),
+            "log_file": log_file,
         }
         self.public_host = public_host
 
-        self.logger = get_logger(self.name, self.conf["log_file"])
+        # Now we can safely use self.name
+        self.logger = get_logger(self.name, log_file)
 
         self.logger.info("Initializing node with cryptographic material...")
 
@@ -225,11 +265,7 @@ class HospitalNode:
           2) PUBLIC_HOST env var
           3) our P2P listen host
         """
-        return (
-            self.public_host
-            or os.getenv("PUBLIC_HOST")
-            or self.conf["host"]
-        )
+        return self.public_host or os.getenv("PUBLIC_HOST") or self.conf["host"]
 
     def _register_self_in_registry(self):
         public_host = self._get_public_host()
@@ -265,7 +301,7 @@ class HospitalNode:
             daemon=True,
         )
         self._server_thread.start()
-        self.logger.info("Background server thread started.")
+        self.logger.info("Background server worker started.")
 
     def stop_server(self):
         self._server_stop.set()
@@ -309,6 +345,10 @@ class HospitalNode:
           True  = request succeeded, file received & decrypted
           False = any failure (registry, connection, crypto, etc.)
         """
+        self.logger.info(
+            f"request_record called: target={target_name}, file_name={file_name}"
+        )
+
         if target_name == self.name:
             self.logger.error("Cannot request from self.")
             return False
@@ -516,27 +556,40 @@ class HospitalNode:
         host = self.conf["host"]
         port = self.conf["port"]
 
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.bind((host, port))
-            s.listen()
-            self.logger.info(f"Server listening on {host}:{port}")
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                # Helps when restarting quickly on the same port
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
-            while not self._server_stop.is_set():
-                try:
-                    s.settimeout(1.0)
-                    conn, addr = s.accept()
-                except socket.timeout:
-                    continue
-                except OSError:
-                    break
+                s.bind((host, port))
+                s.listen()
+                self.logger.info(f"Server listening on {host}:{port}")
 
-                self.logger.info(f"Accepted connection from {addr}")
-                t = threading.Thread(
-                    target=self._handle_request_wrapper,
-                    args=(conn,),
-                    daemon=True,
-                )
-                t.start()
+                while not self._server_stop.is_set():
+                    try:
+                        s.settimeout(1.0)
+                        conn, addr = s.accept()
+                    except socket.timeout:
+                        continue
+                    except OSError:
+                        self.logger.warning(
+                            "Server socket closed or error in accept(); "
+                            "stopping server loop."
+                        )
+                        break
+
+                    self.logger.info(f"Accepted connection from {addr}")
+                    t = threading.Thread(
+                        target=self._handle_request_wrapper,
+                        args=(conn,),
+                        daemon=True,
+                    )
+                    t.start()
+
+        except Exception as e:
+            self.logger.exception(
+                f"Fatal error in server loop (host={host}, port={port}): {e}"
+            )
 
     def _handle_request_wrapper(self, conn: socket.socket):
         try:
